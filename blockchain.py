@@ -1,6 +1,7 @@
 import hashlib
 import json
 
+import requests
 from textwrap import dedent
 from time import time
 from urllib.parse import urlparse
@@ -17,7 +18,7 @@ class Blockchain(object):
     def __init__(self):
         self.chain = []
         self.current_transactions = []
-        self.nodes = {}
+        self.nodes = set()
 
         # genesis block
         self.new_block(previous_hash=1, proof=100)
@@ -80,7 +81,7 @@ class Blockchain(object):
         :return: None
         """
         parsed_url = urlparse(address)
-        self.nodes.add(parsed_rul.netloc)
+        self.nodes.add(parsed_url.netloc)
 
     ##########
     # proofs #
@@ -126,14 +127,14 @@ class Blockchain(object):
         last_block=chain[0]
         current_index = 1
         while current_index < len(chain):
-            bock = chain[current_index]
+            block = chain[current_index]
             print('{}'.format(last_block))
             print('{}'.format(block))
             print("\n------------\n")
             if block['previous_hash'] != self.hash(last_block):
                 return False
 
-            if not self.is_valid_proof(last_block['proof'], bock['proof']):
+            if not self.is_valid_proof(last_block['proof'], block['proof']):
                 return False
 
             last_block = block
@@ -159,7 +160,7 @@ class Blockchain(object):
                 length = response.json()['length']
                 chain = response.json()['chain']
 
-                if length > max_length and self.valid_chain(chain):
+                if length > max_length and self.is_valid_chain(chain):
                     max_length = length
                     new_chain = chain
         if new_chain:
@@ -225,7 +226,35 @@ def full_chain():
             }
     return jsonify(response), 200
 
-#@app.route('/nodes/register', methods=['GET'])
+@app.route('/nodes/register', methods=['POST'])
+def register_nodes():
+    request_data = request.get_json()
+    nodes = request_data.get('nodes')
+    if nodes is None:
+        return "Error: please supply a valid list of nodes", 400
+    for node in nodes:
+        blockchain.register_node(node)
+    response = {
+            'message': "New nodes added",
+            'total_nodes': list(blockchain.nodes)}
+    return jsonify(response), 201
+
+@app.route('/nodes/resolve', methods=['GET'])
+def consensus():
+    replaced = blockchain.resolve_conflicts()
+    if replaced:
+        response = {
+                    'message': "Chain replaced",
+                    'new_chain': blockchain.chain
+                }
+    else:
+        response = {
+                    'message': "Chain kept",
+                    'chain': blockchain.chain
+                }
+    return jsonify(response), 200
+
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
